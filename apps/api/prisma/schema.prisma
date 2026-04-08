@@ -1,0 +1,209 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleCode {
+  SUPER_ADMIN
+  DOCTOR
+  PATIENT
+  RECEPTION
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum AppointmentStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  CHECKED_IN
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+  FAILED
+}
+
+enum TransactionStatus {
+  INITIATED
+  SUCCESS
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+  NET_BANKING
+  WALLET
+}
+
+model Role {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        RoleCode  @unique
+  displayName String    @map("display_name") @db.VarChar(64)
+  description String?   @db.VarChar(255)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  users       User[]
+
+  @@map("roles")
+}
+
+model User {
+  id                  BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
+  roleId              BigInt         @map("role_id") @db.UnsignedBigInt
+  fullName            String         @map("full_name") @db.VarChar(120)
+  email               String         @unique(map: "uq_users_email") @db.VarChar(190)
+  phone               String         @unique(map: "uq_users_phone") @db.VarChar(20)
+  passwordHash        String         @map("password_hash") @db.VarChar(255)
+  gender              Gender?
+  dateOfBirth         DateTime?      @map("date_of_birth") @db.Date
+  avatarUrl           String?        @map("avatar_url") @db.VarChar(255)
+  addressLine1        String?        @map("address_line_1") @db.VarChar(255)
+  addressLine2        String?        @map("address_line_2") @db.VarChar(255)
+  city                String?        @db.VarChar(80)
+  state               String?        @db.VarChar(80)
+  country             String?        @default("India") @db.VarChar(80)
+  postalCode          String?        @map("postal_code") @db.VarChar(20)
+  status              UserStatus     @default(ACTIVE)
+  lastLoginAt         DateTime?      @map("last_login_at") @db.DateTime(3)
+  createdAt           DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+  role                Role           @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  doctorProfile       DoctorProfile?
+  patientAppointments Appointment[]  @relation("PatientAppointments")
+  bookedAppointments  Appointment[]  @relation("BookedAppointments")
+  transactions        Transaction[]
+  authoredReviews     Review[]       @relation("ReviewAuthors")
+
+  @@index([roleId, status], map: "idx_users_role_status")
+  @@index([createdAt], map: "idx_users_created_at")
+  @@map("users")
+}
+
+model DoctorProfile {
+  id                     BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  userId                 BigInt        @unique(map: "uq_doctor_profiles_user_id") @map("user_id") @db.UnsignedBigInt
+  registrationNumber     String        @unique(map: "uq_doctor_profiles_registration") @map("registration_number") @db.VarChar(64)
+  specialty              String        @db.VarChar(120)
+  qualification          String?       @db.VarChar(255)
+  yearsOfExperience      Int           @default(0) @map("years_of_experience") @db.UnsignedSmallInt
+  consultationFee        Decimal       @map("consultation_fee") @db.Decimal(10, 2)
+  slotDurationMinutes    Int           @default(30) @map("slot_duration_minutes") @db.UnsignedSmallInt
+  timezone               String        @default("Asia/Kolkata") @db.VarChar(64)
+  workingHoursJson       Json          @map("working_hours_json")
+  bio                    String?       @db.Text
+  clinicAddressLine1     String?       @map("clinic_address_line_1") @db.VarChar(255)
+  clinicAddressLine2     String?       @map("clinic_address_line_2") @db.VarChar(255)
+  clinicCity             String?       @map("clinic_city") @db.VarChar(80)
+  clinicState            String?       @map("clinic_state") @db.VarChar(80)
+  clinicCountry          String?       @default("India") @map("clinic_country") @db.VarChar(80)
+  clinicPostalCode       String?       @map("clinic_postal_code") @db.VarChar(20)
+  averageRating          Decimal       @default(0) @map("average_rating") @db.Decimal(3, 2)
+  totalReviews           Int           @default(0) @map("total_reviews") @db.UnsignedInt
+  isAcceptingNewPatients Boolean       @default(true) @map("is_accepting_new_patients")
+  createdAt              DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt              DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+  user                   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointments           Appointment[]
+  reviews                Review[]
+
+  @@index([specialty, isAcceptingNewPatients], map: "idx_doctor_profiles_specialty_accepting")
+  @@index([consultationFee], map: "idx_doctor_profiles_fee")
+  @@map("doctor_profiles")
+}
+
+model Appointment {
+  id                 BigInt             @id @default(autoincrement()) @db.UnsignedBigInt
+  patientUserId      BigInt             @map("patient_user_id") @db.UnsignedBigInt
+  doctorProfileId    BigInt             @map("doctor_profile_id") @db.UnsignedBigInt
+  bookedByUserId     BigInt?            @map("booked_by_user_id") @db.UnsignedBigInt
+  appointmentDate    DateTime           @map("appointment_date") @db.Date
+  appointmentStartAt DateTime           @map("appointment_start_at") @db.DateTime(3)
+  appointmentEndAt   DateTime           @map("appointment_end_at") @db.DateTime(3)
+  patientTimezone    String             @default("Asia/Kolkata") @map("patient_timezone") @db.VarChar(64)
+  status             AppointmentStatus  @default(PENDING_PAYMENT)
+  paymentStatus      PaymentStatus      @default(PENDING) @map("payment_status")
+  reasonForVisit     String             @map("reason_for_visit") @db.VarChar(255)
+  symptomsJson       Json?              @map("symptoms_json")
+  notes              String?            @db.Text
+  cancelReason       String?            @map("cancel_reason") @db.VarChar(255)
+  slotLock           Int?               @default(dbgenerated("(case when (`status` in (_utf8mb4'PENDING_PAYMENT',_utf8mb4'CONFIRMED',_utf8mb4'CHECKED_IN',_utf8mb4'COMPLETED')) then 1 else NULL end)")) @map("slot_lock") @db.TinyInt
+  createdAt          DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+  patient            User               @relation("PatientAppointments", fields: [patientUserId], references: [id], onDelete: Restrict)
+  doctorProfile      DoctorProfile      @relation(fields: [doctorProfileId], references: [id], onDelete: Restrict)
+  bookedBy           User?              @relation("BookedAppointments", fields: [bookedByUserId], references: [id], onDelete: SetNull)
+  transactions       Transaction[]
+  review             Review?
+
+  @@index([doctorProfileId, status, appointmentStartAt], map: "idx_appointments_doctor_status_start")
+  @@index([patientUserId, status, appointmentStartAt], map: "idx_appointments_patient_status_start")
+  @@index([appointmentDate], map: "idx_appointments_date")
+  @@unique([doctorProfileId, appointmentStartAt, slotLock], map: "uq_appointments_active_slot")
+  @@map("appointments")
+}
+
+model Transaction {
+  id                   BigInt            @id @default(autoincrement()) @db.UnsignedBigInt
+  appointmentId        BigInt            @map("appointment_id") @db.UnsignedBigInt
+  patientUserId        BigInt            @map("patient_user_id") @db.UnsignedBigInt
+  gatewayTransactionId String?           @unique(map: "uq_transactions_gateway_id") @map("gateway_transaction_id") @db.VarChar(120)
+  amount               Decimal           @db.Decimal(10, 2)
+  currency             String            @default("INR") @db.Char(3)
+  status               TransactionStatus @default(INITIATED)
+  paymentMethod        PaymentMethod     @map("payment_method")
+  provider             String?           @db.VarChar(64)
+  metadataJson         Json?             @map("metadata_json")
+  paidAt               DateTime?         @map("paid_at") @db.DateTime(3)
+  createdAt            DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime          @updatedAt @map("updated_at") @db.DateTime(3)
+  appointment          Appointment       @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patient              User              @relation(fields: [patientUserId], references: [id], onDelete: Restrict)
+
+  @@index([appointmentId, status, createdAt], map: "idx_transactions_appointment_status_created")
+  @@index([patientUserId, createdAt], map: "idx_transactions_patient_created")
+  @@map("transactions")
+}
+
+model Review {
+  id              BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  appointmentId   BigInt        @unique(map: "uq_reviews_appointment_id") @map("appointment_id") @db.UnsignedBigInt
+  patientUserId   BigInt        @map("patient_user_id") @db.UnsignedBigInt
+  doctorProfileId BigInt        @map("doctor_profile_id") @db.UnsignedBigInt
+  rating          Int           @db.UnsignedTinyInt
+  title           String?       @db.VarChar(120)
+  comment         String?       @db.Text
+  isApproved      Boolean       @default(true) @map("is_approved")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+  appointment     Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patient         User          @relation("ReviewAuthors", fields: [patientUserId], references: [id], onDelete: Cascade)
+  doctorProfile   DoctorProfile @relation(fields: [doctorProfileId], references: [id], onDelete: Cascade)
+
+  @@index([doctorProfileId, isApproved, createdAt], map: "idx_reviews_doctor_approved_created")
+  @@index([patientUserId, createdAt], map: "idx_reviews_patient_created")
+  @@map("reviews")
+}
